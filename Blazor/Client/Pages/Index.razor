@@ -1,0 +1,168 @@
+﻿@page "/"
+@page "/index"
+
+@using Blazor.Models;
+@using Blazor.ViewModels;
+@using System.Text.Json;
+
+@inject HttpClient httpClient
+@inject IToastService toastService
+
+<PageTitle>Add Order</PageTitle>
+<EditForm Model="@model" OnValidSubmit="@Save">
+    <DataAnnotationsValidator />
+    <ValidationSummary Model="@model" />
+    <div class="col-form-label-sm">
+        <div class="card">
+            <h5 class="card-header">Enter Order Information</h5>
+            <div class="card-body row">
+                <div class="col-6">
+                    <label class="control-label">Name :</label>
+                    <input class="form-control" @bind="model.Name" placeholder="Order name" />
+                    &nbsp;<ValidationMessage For="@(() => @model.Name)" />
+                </div>
+                <div class="col-6">
+                    <label class="control-label">State</label>
+                    <InputText class="form-control" @bind-Value="@model.State" placeholder="NY" />
+                    &nbsp;<ValidationMessage For="@(() => @model.State)" />
+                </div>
+
+            </div>
+        </div>
+    </div>
+    <br />
+    <div class="text-right">
+        <div class="btn-group">
+            <button type="button" class="btn btn-primary" @onclick="()=>this.Save()"><i class="oi oi-file"></i> @SaveButtonText</button>
+        </div>
+    </div>
+</EditForm>
+
+
+@if (list.Count == 0)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>State</th>
+                <th style="width:10%">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in list)
+            {
+                <tr>
+                    <td>@item.Name</td>
+                    <td>@item.State</td>
+                    <td>
+                        <button type="button" class="btn btn-primary" @onclick="()=>this.Edit(item)"><i class="oi oi-pencil"></i></button>
+                        <button type="button" class="btn btn-primary" @onclick="()=>this.Delete(item.Id)"><i class="oi oi-trash"></i></button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    public Blazor.Models.Orders model { get; set; }
+    List<Blazor.Models.Orders> list = new List<Models.Orders>();
+    private static readonly JsonSerializerOptions jsonSerializerOptions = new JsonSerializerOptions();
+    public string SaveButtonText => model.Id==0? "Save" : "Save Changes";
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        model = new Blazor.Models.Orders();
+        await GetList();
+
+        await base.OnInitializedAsync();
+    }
+
+    async Task GetList()
+    {
+        try
+        {
+            list = await httpClient.GetFromJsonAsync<List<Blazor.Models.Orders>>("api/home/getorderlist");
+            //StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            if (ex.InnerException.Message != "") toastService.ShowError(ex.InnerException.Message);
+            else toastService.ShowError(ex.Message);
+        }
+    }
+
+    async Task Save()
+    {
+        try
+        {
+            var response = await httpClient.PostAsJsonAsync<object>("api/home/createaync", model);
+            response.EnsureSuccessStatusCode();
+
+            var responseBody = await response.Content.ReadAsStreamAsync();
+            ApiResponse apiResponse = await JsonSerializer.DeserializeAsync<ApiResponse>(responseBody, jsonSerializerOptions);
+
+            if (apiResponse.Status)
+            {
+                await GetList();
+                toastService.ShowSuccess(apiResponse.Message);
+                Clear();
+            }
+            else
+            {
+                toastService.ShowError(apiResponse.Message);
+            }
+        }
+        catch (Exception ex)
+        {
+            toastService.ShowError(ex.Message);
+        }
+    }
+
+    void Edit(Blazor.Models.Orders item)
+    {
+        model = item;
+    }
+
+    async Task Delete(int id)
+    {
+        try
+        {
+            if (id == 0) throw new Exception("Id not found.");
+
+            var response = await httpClient.PostAsJsonAsync<object>($"api/home/removeaync?id={id}", null);
+            response.EnsureSuccessStatusCode();
+
+            var responseBody = await response.Content.ReadAsStreamAsync();
+            ApiResponse apiResponse = await JsonSerializer.DeserializeAsync<ApiResponse>(responseBody, jsonSerializerOptions);
+
+            if (apiResponse.Status)
+            {
+                await GetList();
+                toastService.ShowSuccess(apiResponse.Message);
+                Clear();
+            }
+            else
+            {
+                toastService.ShowError(apiResponse.Message);
+            }
+        }
+        catch (Exception ex)
+        {
+            toastService.ShowError(ex.Message);
+        }
+    }
+
+    private void Clear()
+    {
+        model.Id = 0;
+        model.Name = "";
+        model.State = "";
+    }
+}

@@ -1,0 +1,233 @@
+﻿@page "/subelement"
+
+@using Blazor.Models;
+@using Blazor.ViewModels;
+@using System.Text.Json;
+
+@inject HttpClient httpClient
+@inject IToastService toastService
+
+<PageTitle>Add Sub Element</PageTitle>
+<EditForm Model="@model" OnValidSubmit="@Save">
+    <DataAnnotationsValidator />
+    <ValidationSummary Model="@model" />
+    <div class="col-form-label-sm">
+        <div class="card">
+            <h5 class="card-header">Enter Sub Element Information</h5>
+            <div class="card-body row">
+                <div class="col-6">
+                    <label class="control-label">Order :</label>
+                    <select class="form-select" value="@OrderRefValue" @onchange="@ChangeOrder">
+                        <option value="">-- Select Order --</option>
+                        @foreach (var item in orderDdlList)
+                        {
+                            <option value="@item.OrderId.ToString()">@item.Name</option>
+                        }
+                    </select>&nbsp;<ValidationMessage For="@(() => @model.OrderId)" />
+                </div>
+                <div class="col-6">
+                    <label class="control-label">Window :</label>
+                    <select class="form-select" value="@WindowRefValue" @onchange="@ChangeWindow">
+                        <option value="">-- Select Window --</option>
+                        @foreach (var item in windowDdlList)
+                        {
+                            <option value="@item.WindowId.ToString()">@item.Name</option>
+                        }
+                    </select>&nbsp;<ValidationMessage For="@(() => @model.WindowId)" />
+                </div>
+                <div class="col-6">
+                    <label class="control-label">Element</label>
+                    <InputNumber class="form-control" @bind-Value="@model.Element" placeholder="1" /> &nbsp;<ValidationMessage For="@(() => @model.Element)" />
+                </div>
+                <div class="col-6">
+                    <label class="control-label">Type :</label>
+                    <select class="form-select" @bind="@model.Type">
+                        <option value="">-- Select Type --</option>
+                        <option value="Doors">Doors</option>
+                        <option value="Window">Window</option>
+                    </select>&nbsp;<ValidationMessage For="@(() => @model.Type)" />
+                </div>
+                <div class="col-6">
+                    <label class="control-label">Width</label>
+                    <input class="form-control" @bind="@model.Width" placeholder="1" /> &nbsp;<ValidationMessage For="@(() => @model.Width)" />
+                </div>
+                <div class="col-6">
+                    <label class="control-label">Height</label>
+                    <input class="form-control" @bind="@model.Height" placeholder="1" /> &nbsp;<ValidationMessage For="@(() => @model.Height)" />
+                </div>
+            </div>
+        </div>
+    </div>
+    <br />
+    <div class="text-right">
+        <div class="btn-group">
+            <button type="button" class="btn btn-primary" @onclick="()=>this.Save()"><i class="oi oi-file"></i> @SaveButtonText</button>
+        </div>
+    </div>
+</EditForm>
+
+
+@if (list.Count == 0)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Element</th>
+                <th>Type</th>
+                <th>Width</th>
+                <th>Height</th>
+                <th style="width:10%">Action</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in list)
+            {
+                <tr>
+                    <td>@item.Element</td>
+                    <td>@item.Type</td>
+                    <td>@item.Width</td>
+                    <td>@item.Height</td>
+                    <td>
+                        <button type="button" class="btn btn-primary" @onclick="()=>this.Edit(item)"><i class="oi oi-pencil"></i></button>
+                        <button type="button" class="btn btn-primary" @onclick="()=>this.Delete(item.Id)"><i class="oi oi-trash"></i></button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    public Blazor.Models.SubElements model { get; set; }
+    private static readonly JsonSerializerOptions jsonSerializerOptions = new JsonSerializerOptions();
+
+    List<Blazor.Models.SubElements> list = new List<Models.SubElements>();
+    List<DdlViewModel> orderDdlList = new List<DdlViewModel>();
+    List<DdlViewModel> windowDdlList = new List<DdlViewModel>();
+
+    public string SaveButtonText => model.Id == 0 ? "Save" : "Save Changes";
+    private string OrderRefValue { get; set; }
+    private string WindowRefValue { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        model = new Blazor.Models.SubElements();
+        await GetOrderDDL();
+
+        await base.OnInitializedAsync();
+    }
+
+    async Task GetOrderDDL()
+    {
+        HttpResponseMessage response = await httpClient.GetAsync($"api/home/getddl");
+        response.EnsureSuccessStatusCode();
+        var responseBody = await response.Content.ReadAsStreamAsync();
+        orderDdlList = await JsonSerializer.DeserializeAsync<List<DdlViewModel>>(responseBody, jsonSerializerOptions);
+    }
+    protected async Task ChangeOrder(ChangeEventArgs changeEvent)
+    {
+        model.OrderId = Convert.ToInt16(changeEvent.Value);
+        await GetWindowDDL();
+        list.Clear();
+        model.Id = 0;
+    }
+
+    async Task GetWindowDDL()
+    {
+        HttpResponseMessage response = await httpClient.GetAsync($"api/windows/getddl?orderId={model.OrderId}");
+        response.EnsureSuccessStatusCode();
+        var responseBody = await response.Content.ReadAsStreamAsync();
+        windowDdlList = await JsonSerializer.DeserializeAsync<List<DdlViewModel>>(responseBody, jsonSerializerOptions);
+    }
+    protected async Task ChangeWindow(ChangeEventArgs changeEvent)
+    {
+        model.WindowId = Convert.ToInt16(changeEvent.Value);
+        await GetList();
+        model.Id = 0;
+    }
+
+    async Task GetList()
+    {
+        try
+        {
+            list = await httpClient.GetFromJsonAsync<List<Blazor.Models.SubElements>>($"api/subelement/getlist?orderId={model.OrderId}&windowId={model.WindowId}");
+        }
+        catch (Exception ex)
+        {
+            if (ex.InnerException.Message != "") toastService.ShowError(ex.InnerException.Message);
+            else toastService.ShowError(ex.Message);
+        }
+    }
+
+    async Task Save()
+    {
+        try
+        {
+            var response = await httpClient.PostAsJsonAsync<object>("api/subelement/createaync", model);
+            response.EnsureSuccessStatusCode();
+
+            var responseBody = await response.Content.ReadAsStreamAsync();
+            ApiResponse apiResponse = await JsonSerializer.DeserializeAsync<ApiResponse>(responseBody, jsonSerializerOptions);
+
+            if (apiResponse.Status)
+            {
+                await GetList();
+                toastService.ShowSuccess(apiResponse.Message);
+                Clear();
+            }
+            else
+            {
+                toastService.ShowError(apiResponse.Message);
+            }
+        }
+        catch (Exception ex)
+        {
+            toastService.ShowError(ex.Message);
+        }
+    }
+
+    void Edit(Blazor.Models.SubElements item)
+    {
+        model = item;
+        OrderRefValue = item.OrderId.ToString();
+        WindowRefValue = item.WindowId.ToString();
+    }
+
+    async Task Delete(int id)
+    {
+        try
+        {
+            if (id == 0) throw new Exception("Id not found.");
+
+            var response = await httpClient.PostAsJsonAsync<object>($"api/subelement/removeaync?id={id}", null);
+            response.EnsureSuccessStatusCode();
+
+            var responseBody = await response.Content.ReadAsStreamAsync();
+            ApiResponse apiResponse = await JsonSerializer.DeserializeAsync<ApiResponse>(responseBody, jsonSerializerOptions);
+
+            if (apiResponse.Status)
+            {
+                await GetList();
+                toastService.ShowSuccess(apiResponse.Message);
+                Clear();
+            }
+            else
+            {
+                toastService.ShowError(apiResponse.Message);
+            }
+        }
+        catch (Exception ex)
+        {
+            toastService.ShowError(ex.Message);
+        }
+    }
+
+    private void Clear()
+    {
+        model = new();
+    }
+}
